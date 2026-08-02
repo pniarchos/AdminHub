@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- AURORA BUILD: notif v2 rename updateNotifBtn→updateNotifBadge | CODE: NF2-TOAST -->
+<!-- AURORA BUILD: USER_ID→getUserId, dead code purged, updateSettingsBtn fixed | CODE: NF2-TOAST -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2081,15 +2081,15 @@ async function migrateToSupabase(cb){
       for(const domain of Object.keys(S.items[org]))
         for(const item of(S.items[org][domain]||[])){
           const c={...item};delete c._sbId;
-          await SB.from('hub_items').insert({user_id:USER_ID,org,domain,data:c});
+          await SB.from('hub_items').insert({user_id:getUserId(),org,domain,data:c});
         }
     for(const org of Object.keys(S.domains))
-      await SB.from('hub_domains').upsert({user_id:USER_ID,org,domains:S.domains[org],updated_at:new Date().toISOString()},{onConflict:'user_id,org'});
-    await SB.from('hub_tiles').upsert({user_id:USER_ID,tiles:S.tiles,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+      await SB.from('hub_domains').upsert({user_id:getUserId(),org,domains:S.domains[org],updated_at:new Date().toISOString()},{onConflict:'user_id,org'});
+    await SB.from('hub_tiles').upsert({user_id:getUserId(),tiles:S.tiles,updated_at:new Date().toISOString()},{onConflict:'user_id'});
     const {data:ep}=await SB.from('hub_plants').select('id').eq('user_id',getUserId()).limit(1);
     if(!ep||!ep.length)
       for(const p of(S.plants||[]))
-        await SB.from('hub_plants').insert({user_id:USER_ID,name:p.name,nickname:p.nickname||'',check_days:p.checkDays||7,water_days:p.waterDays||10,rule:p.rule||'',last_watered:p.lastWatered||null,last_checked:p.lastChecked||null,status:p.status||'healthy',notes:p.notes||''});
+        await SB.from('hub_plants').insert({user_id:getUserId(),name:p.name,nickname:p.nickname||'',check_days:p.checkDays||7,water_days:p.waterDays||10,rule:p.rule||'',last_watered:p.lastWatered||null,last_checked:p.lastChecked||null,status:p.status||'healthy',notes:p.notes||''});
     if(cb)cb();
   }catch(e){console.warn('Migration error:',e);if(cb)cb();}
 }
@@ -2117,15 +2117,15 @@ async function sbSaveItem(org,domain,item){
   try{
     const p={...item};delete p._sbId;
     if(item._sbId){await SB.from('hub_items').update({data:p,updated_at:new Date().toISOString()}).eq('id',item._sbId);}
-    else{const {data}=await SB.from('hub_items').insert({user_id:USER_ID,org,domain,data:p}).select();if(data&&data[0])item._sbId=data[0].id;}
+    else{const {data}=await SB.from('hub_items').insert({user_id:getUserId(),org,domain,data:p}).select();if(data&&data[0])item._sbId=data[0].id;}
   }catch(e){console.warn(e);}
 }
 async function sbDeleteItem(id){if(!SB||!id)return;try{await SB.from('hub_items').delete().eq('id',id);}catch(e){console.warn(e);}}
-async function sbSaveDomains(org){if(!SB)return;try{await SB.from('hub_domains').upsert({user_id:USER_ID,org,domains:S.domains[org],updated_at:new Date().toISOString()},{onConflict:'user_id,org'});}catch(e){console.warn(e);}}
-async function sbSaveTiles(){if(!SB)return;try{await SB.from('hub_tiles').upsert({user_id:USER_ID,tiles:S.tiles,updated_at:new Date().toISOString()},{onConflict:'user_id'});}catch(e){console.warn(e);}}
+async function sbSaveDomains(org){if(!SB)return;try{await SB.from('hub_domains').upsert({user_id:getUserId(),org,domains:S.domains[org],updated_at:new Date().toISOString()},{onConflict:'user_id,org'});}catch(e){console.warn(e);}}
+async function sbSaveTiles(){if(!SB)return;try{await SB.from('hub_tiles').upsert({user_id:getUserId(),tiles:S.tiles,updated_at:new Date().toISOString()},{onConflict:'user_id'});}catch(e){console.warn(e);}}
 async function sbSavePlant(plant){
   if(!SB)return;
-  const row={user_id:USER_ID,name:plant.name,nickname:plant.nickname||'',check_days:plant.checkDays,water_days:plant.waterDays,rule:plant.rule||'',last_watered:plant.lastWatered||null,last_checked:plant.lastChecked||null,status:plant.status||'healthy',notes:plant.notes||'',updated_at:new Date().toISOString()};
+  const row={user_id:getUserId(),name:plant.name,nickname:plant.nickname||'',check_days:plant.checkDays,water_days:plant.waterDays,rule:plant.rule||'',last_watered:plant.lastWatered||null,last_checked:plant.lastChecked||null,status:plant.status||'healthy',notes:plant.notes||'',updated_at:new Date().toISOString()};
   try{
     if(plant.id&&!plant.id.startsWith('p')){await SB.from('hub_plants').update(row).eq('id',plant.id);}
     else{const {data}=await SB.from('hub_plants').insert(row).select();if(data&&data[0])plant.id=data[0].id;}
@@ -2143,13 +2143,6 @@ function disconnectSupabase(){
   setAlert('supa-alert','Disconnected. Using local storage.','ok');
 }
 
-function initSupabase(){
-  if(!S.sbConfig||!S.sbConfig.url||!S.sbConfig.key)return;
-  loadSupabaseLib(()=>{
-    try{SB=supabase.createClient(S.sbConfig.url,S.sbConfig.key);loadFromSupabase();}
-    catch(e){console.warn('Supabase init error:',e);}
-  });
-}
 
 // ═══════════════════════════════════════════
 // DATE UTILS
@@ -3052,8 +3045,11 @@ function saveSettings(){saveAllSettings();}
 function updateSettingsBtn(){
   const btn=document.getElementById('settings-btn');
   if(!btn||!S)return;
-  const allOk=!!(S.anthropicKey&&S.sbConfig&&S.sbConfig.url&&S.gConfig&&S.gConfig.clientId);
-  const someOk=!!(S.anthropicKey||(S.sbConfig&&S.sbConfig.url)||(S.gConfig&&S.gConfig.clientId));
+  const hasAuth=!!(AURORA_USER);
+  const hasAI=!!(S.anthropicKey);
+  const hasSB=!!(S.sbConfig&&S.sbConfig.url);
+  const allOk=hasAuth&&hasAI&&hasSB;
+  const someOk=hasAuth||hasAI||hasSB;
   btn.classList.remove('st-on','st-off','st-partial');
   if(allOk)btn.classList.add('st-on');
   else if(someOk)btn.classList.add('st-partial');
@@ -3163,97 +3159,21 @@ async function ensureGAuth(action){
         action(); pendingGAction=null; return;
       }
       // 3. No refresh token — need full auth code flow
-      startAuthCodeFlow();
+      // startAuthCodeFlow removed
     } catch(e) {
       console.error('ensureGAuth error:', e.message);
       // Refresh failed — clear tokens and start fresh
       S.gConfig.accessToken=''; S.gConfig.tokenExpiry=0; S.gConfig.refreshToken='';
       persistLS();
-      startAuthCodeFlow();
+      // startAuthCodeFlow removed
     }
   });
 }
 
-function startAuthCodeFlow(){
-  if(_gAuthInProgress) return;
-  _gAuthInProgress = true;
-  var clientId = S.gConfig.clientId;
-  var state = Math.random().toString(36).slice(2);
-  sessionStorage.setItem('gauth_state', state);
-  var params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    scope: GSCOPES,
-    access_type: 'offline',
-    prompt: 'consent',
-    state: state
-  });
-  var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
-  var popup = window.open(authUrl, 'google-auth', 'width=500,height=620,left=200,top=100');
-  // Poll for redirect back
-  var poll = setInterval(async function(){
-    try {
-      var url = popup.location.href;
-      if(url.indexOf(REDIRECT_URI) === 0){
-        clearInterval(poll);
-        popup.close();
-        _gAuthInProgress = false;
-        var urlParams = new URLSearchParams(popup.location.search || url.split('?')[1] || '');
-        var code = urlParams.get('code');
-        var retState = urlParams.get('state');
-        if(!code){ alert('Google auth failed — no code returned.'); return; }
-        if(retState !== sessionStorage.getItem('gauth_state')){ alert('Auth state mismatch.'); return; }
-        // Exchange code for tokens via Edge Function
-        setAlert('gsetup-alert','Exchanging auth code...','ok');
-        var tokens = await exchangeCodeForTokens(code);
-        S.gConfig.accessToken = tokens.access_token;
-        S.gConfig.tokenExpiry = Date.now() + ((tokens.expires_in||3600) - 120) * 1000;
-        if(tokens.refresh_token) S.gConfig.refreshToken = tokens.refresh_token;
-        persistLS();
-        setGapiToken(tokens.access_token);
-        updateSettingsBtn();
-        setAlert('gsetup-alert','Google connected permanently.','ok');
-        if(pendingGAction){ pendingGAction(); pendingGAction=null; }
-      }
-    } catch(e){
-      // Cross-origin access before redirect — normal, keep polling
-    }
-  }, 500);
-  // Timeout after 3 minutes
-  setTimeout(function(){
-    if(_gAuthInProgress){
-      clearInterval(poll);
-      _gAuthInProgress = false;
-      try{ popup.close(); }catch(e){}
-      setAlert('gsetup-alert','Auth timed out. Try again.','err');
-    }
-  }, 180000);
-}
+
 
 // Check for auth code redirect on page load
-async function checkAuthCodeRedirect(){
-  var url = window.location.href;
-  if(url.indexOf('?code=') < 0 && url.indexOf('&code=') < 0) return;
-  var urlParams = new URLSearchParams(window.location.search);
-  var code = urlParams.get('code');
-  var state = urlParams.get('state');
-  if(!code) return;
-  // This page was the redirect target — exchange code
-  try {
-    var tokens = await exchangeCodeForTokens(code);
-    S.gConfig.accessToken = tokens.access_token;
-    S.gConfig.tokenExpiry = Date.now() + ((tokens.expires_in||3600) - 120) * 1000;
-    if(tokens.refresh_token) S.gConfig.refreshToken = tokens.refresh_token;
-    persistLS();
-    // Clean URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-    setAlert('gsetup-alert','Google connected permanently.','ok');
-    updateSettingsBtn();
-  } catch(e) {
-    console.error('Token exchange failed:', e.message);
-  }
-}
+
 
 function connectGoogle(){
   const clientId = '';
@@ -3274,7 +3194,7 @@ function connectGoogle(){
       if(sheetId) fetchSheetColumns();
       else setAlert('gsetup-alert','Google connected permanently.','ok');
     };
-    startAuthCodeFlow();
+    // startAuthCodeFlow removed
   });
 }
 
